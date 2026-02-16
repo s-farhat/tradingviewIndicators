@@ -1,0 +1,137 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Absorption Candle Detector v3.0 (Simplified)
+// Highlights candles where price direction contradicts delta direction
+
+//@version=6
+indicator("Absorption Candle Detector", shorttitle="AbsorbΔ", overlay=true, max_bars_back=500)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+i_deltaLowerTF = input.timeframe("1", "Lower Timeframe for Delta",
+     tooltip="Timeframe to fetch sub-bars for delta calculation.\n" +
+             "• For 5min chart: try '1'\n" +
+             "• For 1min chart: try '1' or seconds if supported\n" +
+             "• Lower = more accurate but may not be available")
+
+i_disableOnFallback = input.bool(true, "Disable Signals on Fallback",
+     tooltip="If lower TF data unavailable, disable all signals\n" +
+             "• ON = no signals when sub-bar data missing\n" +
+             "• OFF = use simple heuristic (less accurate)")
+
+i_showTriangles = input.bool(true, "Show Triangles")
+i_showBarColor = input.bool(true, "Color Absorption Bars")
+i_showDeltaPlot = input.bool(false, "Plot Delta (separate pane)")
+
+i_bullColor = input.color(color.new(#00E676, 0), "Bullish Absorption Color")
+i_bearColor = input.color(color.new(#FF5252, 0), "Bearish Absorption Color")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DELTA CALCULATION
+// ══════════════════════════════════════════════════════════════════════════════
+
+[ltfOpen, ltfHigh, ltfLow, ltfClose, ltfVolume] = request.security_lower_tf(
+     syminfo.tickerid,
+     i_deltaLowerTF,
+     [open, high, low, close, volume]
+)
+
+calcDelta() =>
+    float buyVol = 0.0
+    float sellVol = 0.0
+    int subBars = ltfOpen.size()
+
+    if subBars > 0
+        for i = 0 to subBars - 1
+            float o = ltfOpen.get(i)
+            float h = ltfHigh.get(i)
+            float l = ltfLow.get(i)
+            float c = ltfClose.get(i)
+            float v = ltfVolume.get(i)
+
+            if c > o
+                buyVol += v
+            else if c < o
+                sellVol += v
+            else
+                float barRange = h - l
+                if barRange > 0
+                    float closePosInBar = (c - l) / barRange
+                    buyVol += v * closePosInBar
+                    sellVol += v * (1 - closePosInBar)
+                else
+                    buyVol += v * 0.5
+                    sellVol += v * 0.5
+
+    [buyVol, sellVol, subBars]
+
+[buyVolume, sellVolume, subBarCount] = calcDelta()
+
+float barDelta = buyVolume - sellVolume
+bool usingFallback = subBarCount == 0
+float fallbackDelta = close > open ? volume : close < open ? -volume : 0.0
+float delta = usingFallback ? fallbackDelta : barDelta
+bool signalsDisabled = usingFallback and i_disableOnFallback
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ABSORPTION DETECTION (pure delta divergence)
+// ══════════════════════════════════════════════════════════════════════════════
+
+bool isBullish = close > open
+bool isBearish = close < open
+
+// Bearish absorption: red candle + positive delta
+bool bearishAbsorption = isBearish and delta > 0 and not signalsDisabled
+
+// Bullish absorption: green candle + negative delta
+bool bullishAbsorption = isBullish and delta < 0 and not signalsDisabled
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISUALS
+// ══════════════════════════════════════════════════════════════════════════════
+
+plotshape(i_showTriangles and bearishAbsorption, "Bearish Absorption",
+     shape.triangledown, location.abovebar, i_bearColor, size=size.small)
+plotshape(i_showTriangles and bullishAbsorption, "Bullish Absorption",
+     shape.triangleup, location.belowbar, i_bullColor, size=size.small)
+
+barcolor(i_showBarColor and bearishAbsorption ? i_bearColor :
+         i_showBarColor and bullishAbsorption ? i_bullColor : na)
+
+plot(i_showDeltaPlot ? delta : na, "Bar Delta",
+     color=delta > 0 ? color.green : color.red, style=plot.style_columns)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FALLBACK WARNING
+// ══════════════════════════════════════════════════════════════════════════════
+
+var label fallbackWarningLabel = na
+
+if usingFallback and barstate.islast
+    if not na(fallbackWarningLabel)
+        label.delete(fallbackWarningLabel)
+
+    string warningText = "⚠️ FALLBACK MODE\n"
+    warningText += i_disableOnFallback ? "Signals DISABLED" : "Using approximation"
+    warningText += "\nTry different Lower TF: " + i_deltaLowerTF
+
+    fallbackWarningLabel := label.new(bar_index, high, warningText,
+         style=label.style_label_lower_left, color=color.new(#FF9800, 0),
+         textcolor=color.white, size=size.normal)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(bearishAbsorption,
+     title="Bearish Absorption",
+     message="🔴 Bearish Absorption on {{ticker}} {{interval}} at {{close}}")
+
+alertcondition(bullishAbsorption,
+     title="Bullish Absorption",
+     message="🟢 Bullish Absorption on {{ticker}} {{interval}} at {{close}}")
+
+alertcondition(bearishAbsorption or bullishAbsorption,
+     title="Any Absorption",
+     message="⚡ Absorption detected on {{ticker}} {{interval}} at {{close}}")
