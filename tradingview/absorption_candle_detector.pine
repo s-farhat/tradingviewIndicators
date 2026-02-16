@@ -20,6 +20,13 @@ i_disableOnFallback = input.bool(true, "Disable Signals on Fallback",
              "• ON = no signals when sub-bar data missing\n" +
              "• OFF = use simple heuristic (less accurate)")
 
+i_deltaRatioMin = input.float(0.15, "Delta Ratio Minimum", minval=0.0, maxval=1.0, step=0.01,
+     tooltip="|delta|/volume must be >= this value\n" +
+             "• 0.15 = delta must be at least 15% of total volume\n" +
+             "• Higher = fewer, stronger signals\n" +
+             "• 0.10-0.25 recommended range\n" +
+             "• 0.0 = disabled")
+
 i_showTriangles = input.bool(true, "Show Triangles")
 i_showBarColor = input.bool(true, "Color Absorption Bars")
 i_showDeltaPlot = input.bool(false, "Plot Delta (separate pane)")
@@ -74,18 +81,22 @@ float fallbackDelta = close > open ? volume : close < open ? -volume : 0.0
 float delta = usingFallback ? fallbackDelta : barDelta
 bool signalsDisabled = usingFallback and i_disableOnFallback
 
+// Delta ratio: what % of volume was net directional
+float deltaRatio = volume > 0 ? math.abs(delta) / volume : 0.0
+
 // ══════════════════════════════════════════════════════════════════════════════
-// ABSORPTION DETECTION (pure delta divergence)
+// ABSORPTION DETECTION (delta divergence + delta ratio)
 // ══════════════════════════════════════════════════════════════════════════════
 
 bool isBullish = close > open
 bool isBearish = close < open
+bool deltaRatioOk = deltaRatio >= i_deltaRatioMin
 
-// Bearish absorption: red candle + positive delta
-bool bearishAbsorption = isBearish and delta > 0 and not signalsDisabled
+// Bearish absorption: red candle + positive delta + meaningful ratio
+bool bearishAbsorption = isBearish and delta > 0 and deltaRatioOk and not signalsDisabled
 
-// Bullish absorption: green candle + negative delta
-bool bullishAbsorption = isBullish and delta < 0 and not signalsDisabled
+// Bullish absorption: green candle + negative delta + meaningful ratio
+bool bullishAbsorption = isBullish and delta < 0 and deltaRatioOk and not signalsDisabled
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VISUALS
