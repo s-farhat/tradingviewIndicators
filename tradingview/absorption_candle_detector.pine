@@ -20,11 +20,11 @@ i_disableOnFallback = input.bool(true, "Disable Signals on Fallback",
              "• ON = no signals when sub-bar data missing\n" +
              "• OFF = use simple heuristic (less accurate)")
 
-i_deltaRatioMin = input.float(0.15, "Delta Ratio Minimum", minval=0.0, maxval=1.0, step=0.01,
+i_deltaRatioMin = input.float(0.25, "Delta Ratio Minimum", minval=0.0, maxval=1.0, step=0.01,
      tooltip="|delta|/volume must be >= this value\n" +
-             "• 0.15 = delta must be at least 15% of total volume\n" +
+             "• 0.25 = delta must be at least 25% of total volume\n" +
              "• Higher = fewer, stronger signals\n" +
-             "• 0.10-0.25 recommended range\n" +
+             "• 0.10-0.30 recommended range\n" +
              "• 0.0 = disabled")
 
 i_showTriangles = input.bool(true, "Show Triangles")
